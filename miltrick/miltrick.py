@@ -96,8 +96,7 @@ class MILModel(torch.nn.Module):
         self._freeze_attention_model()
         feature_vectors = self.__compute_feature_vectors(bag)
 
-        # self.feature_extractor.layer2[0].conv1.weight
-        # self.attention_model.attention[0].weight
+
         # Unfreeze attention model
         self._unfreeze_attention_model()
         pred, attention = self.attention_model(feature_vectors)

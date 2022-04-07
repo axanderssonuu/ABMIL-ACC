@@ -4,18 +4,14 @@ import torch.utils.data as data_utils
 from torch.autograd import Variable
 from torchvision import transforms
 import numpy as np
-import random
 
-from pathlib import Path
-import pandas as pd
-import matplotlib.pyplot as plt
 from torch.nn import BCELoss
 
 from miltrick.miltrick import MILModel
 from qmnist_dataloaders import QmnistBags
 from qmnist_utils import set_seed, setup_qmnist
 from qmnist_models import QMNISTFeatureModel, QMNISTAttentionModel
-
+import os 
 
 # Create folder to save models while training. 
 if os.path.exists('Temp_models'):
@@ -48,12 +44,12 @@ sampling_size_in_instances = np.ceil((sampling_percent*num_instances_bag)/100)
 image_sizeQMNIST = (1,img_size_value,img_size_value)
 
 # Where to save trained models
-base_path = f'./benchmark/QMNIST/data/QMNIST_{num_train_bag:04d}_{num_instances:04d}_{percent_key_instances:04d}/{fold}'
+base_path = f'./benchmark/QMNIST/data/QMNIST_{num_train_bags:04d}_{num_instances_bag:04d}_{percent_key_instances:04d}/fold1'
 
 # Create QMNIST bags
 setup_qmnist(
     num_bags=[num_train_bags],
-    num_instances=[num_instances_bag],
+    num_instances_bag=[num_instances_bag],
     num_bags_valid=num_bags_valid,
     num_bags_test=num_bags_test,
     percent_key_instances=percent_key_instances
@@ -62,8 +58,6 @@ setup_qmnist(
 # Create model
 feature_model = QMNISTFeatureModel()
 attention_model = QMNISTAttentionModel()
-feature_model.load_state_dict(torch.load((f'benchmark/QMNIST/models/qmnist_feature_model_1.pt')), strict=True)
-attention_model.load_state_dict(torch.load((f'benchmark/QMNIST/models/qmnist_attention_model_1.pt')), strict=True)
 model = MILModel(feature_model, attention_model, BCELoss())
 model = model.to(gpu)
 
@@ -112,12 +106,6 @@ test_loader = data_utils.DataLoader(QmnistBags(train=False,
 
 # Optimizer
 optimizer = torch.optim.Adam(model.parameters(), lr=lr, betas=(0.9, 0.999), weight_decay=1e-4)
-
-
-train_loss = 0
-train_error = 0
-valid_loss = 0
-valid_error = 0
 best_avg_val_error = np.inf
 
 for epoch in range(nepochs):
@@ -128,15 +116,15 @@ for epoch in range(nepochs):
 
     model.train()
     for batch_idx, (bag, target, sample_indices, index, bag_names) in enumerate(train_loader):
-        target = target[0]; bag = bag[0]
-        if cuda:
+        target = target[0]; bag = bag[0]; target = target.unsqueeze(0)
+        if gpu:
             target, bag = target.to(gpu), bag.to(gpu)
         bag, target = Variable(bag), Variable(target)
         
         pred, attention, loss = model.forward_train(
             bag, 
             target, 
-            max_instances_per_forward_pass=max_instances_per_forward_pass, 
+            max_instances_per_forward_pass=max_instances_forward_pass, 
             scale_loss=1.0/number_of_bags_to_average_gradient_over
         )
        
@@ -155,11 +143,11 @@ for epoch in range(nepochs):
     model.eval()
     with torch.no_grad():
         for batch_idx, (bag, target, sample_indices, index, bag_names) in enumerate(valid_loader):
-            target = target[0]; bag = bag[0]
-            if cuda:
+            target = target[0]; bag = bag[0]; target = target.unsqueeze(0)
+            if gpu:
                 target, bag = target.to(gpu), bag.to(gpu)
             bag, target = Variable(bag), Variable(target)
-            pred, attention, loss = model.forward_test(bag, target, max_instances_per_forward_pass=max_instances_per_forward_pass)
+            pred, attention, loss = model.forward_test(bag, target, max_instances_per_forward_pass=max_instances_forward_pass)
             valid_loss += loss
             valid_error += 1. - pred.ge(0.5).eq(target).cpu().float().item()        
         valid_loss /= len(valid_loader)
